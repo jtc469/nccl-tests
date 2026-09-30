@@ -31,7 +31,7 @@ void jsonIdentifyWriter(bool is_writer);
 void jsonOutputFinalize();
 
 // Try to set up CSV file output, with the same rank 0 and file probing
-// behaviour as jsonOutputInit. Writes the header row.
+// behaviour as jsonOutputInit. The header row is written by writeResultHeader.
 void csvOutputInit(const char *path);
 
 // Close the CSV output file.

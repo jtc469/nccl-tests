@@ -500,8 +500,6 @@ void csvOutputInit(const char *in_path) {
   }
 
   write_csv = true;
-
-  fprintf(csv_report_fp, "size,count,type,redop,root,inplace,time,algbw,busbw,#wrong\n");
 }
 
 void csvOutputFinalize() {
@@ -959,6 +957,10 @@ void writeResultHeader(bool report_cputime, bool report_timestamps) {
 
   if(write_json) {
     jsonKey("results"); jsonStartList();
+  }
+
+  if(write_csv) {
+    fprintf(csv_report_fp, "size,count,type,redop,root,inplace,%s,algbw,busbw,#wrong\n", timeStr);
   }
 }
 

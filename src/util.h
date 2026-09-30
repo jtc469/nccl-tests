@@ -30,6 +30,13 @@ void jsonIdentifyWriter(bool is_writer);
 // Write end time and close top-level object. Reset json state and close output file.
 void jsonOutputFinalize();
 
+// Try to set up CSV file output, with the same rank 0 and file probing
+// behaviour as jsonOutputInit. Writes the header row.
+void csvOutputInit(const char *path);
+
+// Close the CSV output file.
+void csvOutputFinalize();
+
 struct IterStats {
   double min, max, avg, p50, p95, p99, stdev;
 };

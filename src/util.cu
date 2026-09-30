@@ -56,6 +56,15 @@ extern int tuning;
 static FILE *json_report_fp;
 static thread_local bool write_json;
 
+static FILE *csv_report_fp;
+static thread_local bool write_csv;
+
+// CSV writes one row per (size, in-place) pair, so the preamble fields
+// are kept here until each writeBenchmarkLineBody call.
+static size_t csv_size, csv_count;
+static const char *csv_type, *csv_redop;
+static int csv_root;
+
 struct groupEvent {
   uint64_t type;
   std::atomic<int> count;
@@ -354,6 +363,33 @@ void formatNow(char *buff, int len) {
   strftime(buff, len, TIME_STRING_FORMAT, timeinfo);
 }
 
+// Open 'in_path' as a new file for writing. If it already exists, we
+// probe for new files by appending integers until we succeed.
+// Returns nullptr if no file could be opened. 'kind' is only used in
+// the status line written to stdout.
+static FILE *openNewOutputFile(const char *in_path, const char *kind) {
+  char *try_path = strdup(in_path);
+  int try_count = 0;
+  FILE *fp = fopen(try_path, "wx");
+  while(fp == NULL) {
+    if(errno != EEXIST) {
+      printf("# skipping %s output; %s not accessible\n", kind, try_path);
+      free(try_path);
+      return nullptr;
+    }
+    free(try_path);
+    if(ncclTestAsprintf(&try_path, "%s.%d", in_path, try_count++) == -1) {
+      printf("# skipping %s output; failed to probe destination\n", kind);
+      return nullptr;
+    }
+    fp = fopen(try_path, "wx");
+  }
+
+  printf("# Writing %s output to %s\n", kind, try_path);
+  free(try_path);
+  return fp;
+}
+
 // We provide some status line to stdout.
 // The JSON stream is left with a trailing comma and the top-level
 // object open for the next set of top-level items (config and
@@ -376,25 +412,10 @@ void jsonOutputInit(const char *in_path,
   }
   #endif
 
-  char *try_path = strdup(in_path);
-  int try_count = 0;
-  json_report_fp = fopen(try_path, "wx");
-  while(json_report_fp == NULL) {
-    if(errno != EEXIST) {
-      printf("# skipping json output; %s not accessible\n", try_path);
-      free(try_path);
-      return;
-    }
-    free(try_path);
-    if(ncclTestAsprintf(&try_path, "%s.%d", in_path, try_count++) == -1) {
-      printf("# skipping json output; failed to probe destination\n");
-      return;
-    }
-    json_report_fp = fopen(try_path, "wx");
+  json_report_fp = openNewOutputFile(in_path, "JSON");
+  if(json_report_fp == nullptr) {
+    return;
   }
-
-  printf("# Writing JSON output to %s\n", try_path);
-  free(try_path);
 
   write_json = true;
 
@@ -427,6 +448,7 @@ void jsonOutputInit(const char *in_path,
 
 void jsonIdentifyWriter(bool is_writer) {
   write_json &= is_writer;
+  write_csv &= is_writer;
 }
 
 // This cleans up the json output, finishing the object and closing the file.
@@ -454,6 +476,38 @@ void jsonOutputFinalize() {
 
     fclose(json_report_fp);
     json_report_fp = nullptr;
+  }
+}
+
+// Set up CSV output. One row is written per (size, in-place) result;
+// column names match rccl-tests where the two overlap.
+void csvOutputInit(const char *in_path) {
+  if(in_path == nullptr) {
+    return;
+  }
+
+  #ifdef MPI_SUPPORT
+  int proc;
+  MPI_Comm_rank(MPI_COMM_WORLD, &proc);
+  if(proc != 0) {
+    return;
+  }
+  #endif
+
+  csv_report_fp = openNewOutputFile(in_path, "CSV");
+  if(csv_report_fp == nullptr) {
+    return;
+  }
+
+  write_csv = true;
+
+  fprintf(csv_report_fp, "size,count,type,redop,root,inplace,time,algbw,busbw,#wrong\n");
+}
+
+void csvOutputFinalize() {
+  if(write_csv) {
+    fclose(csv_report_fp);
+    csv_report_fp = nullptr;
   }
 }
 
@@ -510,6 +564,14 @@ void writeBenchmarkLinePreamble(size_t nBytes, size_t nElem, const char typeName
     jsonKey("type");  jsonStr(typeName);
     jsonKey("redop"); jsonStr(opName);
     jsonKey("root");  jsonStr(rootName);
+  }
+
+  if(write_csv) {
+    csv_size  = nBytes;
+    csv_count = nElem;
+    csv_type  = typeName;
+    csv_redop = opName;
+    csv_root  = root;
   }
 }
 
@@ -617,6 +679,17 @@ void writeBenchmarkLineBody(double timeUsec, double algBw, double busBw, bool re
     jsonKey("bus_bw");                             jsonDouble(busBw);
     jsonKey("nwrong");                             (reportErrors ? jsonDouble((double)wrongElts) : jsonNull());
     jsonFinishObject();
+  }
+
+  if(write_csv) {
+    fprintf(csv_report_fp, "%zu,%zu,%s,%s,%d,%d,%f,%f,%f,",
+            csv_size, csv_count, csv_type, csv_redop, csv_root, out_of_place ? 0 : 1,
+            timeUsec, algBw, busBw);
+    if (reportErrors) {
+      fprintf(csv_report_fp, "%lld\n", (long long)wrongElts);
+    } else {
+      fprintf(csv_report_fp, "N/A\n");
+    }
   }
 }
 

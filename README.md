@@ -99,7 +99,7 @@ Collective perf tests support the same set of arguments :
   * `-H,--host_rma_implementation <num RMA contexts>` use host one-sided RMA (`ncclPutSignal`/`ncclWaitSignal`) instead of the built-in collective. Supported by sendrecv, alltoall, all\_gather, broadcast, gather, and scatter. `1` uses a single context; values `>1` distribute RMA traffic across contexts and require NCCL >= 2.31. Requires symmetric registration (`-R 2`). Mutually exclusive with `-D`.
   * `-V,--device_cta_count <number>` number of CTAs for device API implementation. Must be positive and less than 128. Default : 16.
   * `-S,--report_timestamps <0/1>` Add timestamp (`"%Y-%m-%d %H:%M:%S"`) to each performance report line. Default : 0.
-  * `-J,--output_file <file>` Write [JSON] output to filepath. Infer type from suffix (only `json` supported presently).
+  * `-J,--output_file <file>` Write [JSON] or CSV output to filepath. Infer type from suffix (`json` or `csv`).
   * `-T,--timeout <time in seconds>` timeout each test after specified number of seconds. Default : disabled.
   * `-M,--memory <0/1>` enable memory usage report. Default : 0.
   * `-u,--unalign <index of first element>` Misalign source and destination buffers. Default : 0.
